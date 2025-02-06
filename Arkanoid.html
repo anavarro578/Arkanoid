@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arkanoid Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      @apply bg-beige text-black font-sans flex items-center justify-center min-h-screen;
+    }
+    canvas {
+      border: 4px solid black;
+      display: block;
+    }
+    .retro-text {
+      font-family: 'Press Start 2P', cursive;
+      font-size: 2rem;
+      color: red;
+      text-shadow: 3px 3px 0px black;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="text-center">
+    <h1 class="text-4xl font-bold mb-4">Arkanoid Game</h1>
+    <p class="text-lg mb-4">Use las teclas de flecha o los botones táctiles para mover la barra. Evita que la bola caiga. ¡Rompe todos los ladrillos!</p>
+    <div class="flex justify-center mb-4 space-x-8">
+      <div class="text-xl">Score: <span id="score">0</span></div>
+      <div class="text-xl">Lives: <span id="lives">3</span></div>
+    </div>
+    <canvas id="gameCanvas" width="480" height="320" class="mx-auto"></canvas>
+    <button id="startButton" class="mt-4 px-6 py-2 bg-green-600 text-white rounded hover:bg-green-800">Start Game</button>
+
+    <!-- Mobile Controls -->
+    <div class="flex justify-center mt-4 space-x-8">
+      <button id="leftButton" class="px-6 py-8 bg-green-500 text-white rounded hover:bg-green-600">
+        ⬅️
+      </button>
+      <button id="rightButton" class="px-6 py-8 bg-green-500 text-white rounded hover:bg-green-600">
+        ➡️
+      </button>
+    </div>
+  </div>
+
+  <audio id="gameMusic" loop>
+    <source src="/mnt/data/8bit-music-for-game-68698.mp3" type="audio/mpeg">
+    Your browser does not support the audio element.
+  </audio>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const startButton = document.getElementById("startButton");
+    const leftButton = document.getElementById("leftButton");
+    const rightButton = document.getElementById("rightButton");
+    const gameMusic = document.getElementById("gameMusic");
+
+    // Game variables
+    const paddleHeight = 10;
+    const paddleWidth = 75;
+    let paddleX = (canvas.width - paddleWidth) / 2;
+
+    const ballRadius = 8;
+    let x = canvas.width / 2;
+    let y = canvas.height - 30;
+    let dx = 2;
+    let dy = -2;
+
+    const brickRowCount = 5;
+    const brickColumnCount = 7;
+    const brickWidth = 60;
+    const brickHeight = 20;
+    const brickPadding = 10;
+    const brickOffsetTop = 30;
+    const brickOffsetLeft = 35;
+
+    let bricks;
+
+    let score = 0;
+    let lives = 3;
+    let isGameRunning = false;
+
+    let rightPressed = false;
+    let leftPressed = false;
+
+    document.addEventListener("keydown", keyDownHandler, false);
+    document.addEventListener("keyup", keyUpHandler, false);
+
+    startButton.addEventListener("click", startGame);
+
+    leftButton.addEventListener("mousedown", () => leftPressed = true);
+    leftButton.addEventListener("mouseup", () => leftPressed = false);
+    leftButton.addEventListener("touchstart", (e) => { e.preventDefault(); leftPressed = true; });
+    leftButton.addEventListener("touchend", (e) => { e.preventDefault(); leftPressed = false; });
+
+    rightButton.addEventListener("mousedown", () => rightPressed = true);
+    rightButton.addEventListener("mouseup", () => rightPressed = false);
+    rightButton.addEventListener("touchstart", (e) => { e.preventDefault(); rightPressed = true; });
+    rightButton.addEventListener("touchend", (e) => { e.preventDefault(); rightPressed = false; });
+
+    function keyDownHandler(e) {
+      if (e.key === "Right" || e.key === "ArrowRight") {
+        rightPressed = true;
+      } else if (e.key === "Left" || e.key === "ArrowLeft") {
+        leftPressed = true;
+      }
+    }
+
+    function keyUpHandler(e) {
+      if (e.key === "Right" || e.key === "ArrowRight") {
+        rightPressed = false;
+      } else if (e.key === "Left" || e.key === "ArrowLeft") {
+        leftPressed = false;
+      }
+    }
+
+    function initializeBricks() {
+      bricks = [];
+      for (let c = 0; c < brickColumnCount; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < brickRowCount; r++) {
+          bricks[c][r] = { x: 0, y: 0, status: 1 };
+        }
+      }
+    }
+
+    function drawBall() {
+      ctx.beginPath();
+      ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+      ctx.fillStyle = "#f43f5e"; // Ball color changed to vivid red
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function drawPaddle() {
+      ctx.beginPath();
+      ctx.roundRect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight, 5);
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      gradient.addColorStop(0, "#34d399");
+      gradient.addColorStop(1, "#059669");
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function drawBricks() {
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          if (bricks[c][r].status === 1) {
+            const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+            const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+            bricks[c][r].x = brickX;
+            bricks[c][r].y = brickY;
+            ctx.beginPath();
+            ctx.rect(brickX, brickY, brickWidth, brickHeight);
+            const gradient = ctx.createLinearGradient(0, brickY, 0, brickY + brickHeight);
+            gradient.addColorStop(0, `hsl(${Math.random() * 360}, 70%, 50%)`);
+            gradient.addColorStop(1, `hsl(${Math.random() * 360}, 50%, 40%)`);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.closePath();
+          }
+        }
+      }
+    }
+
+    function collisionDetection() {
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          const brick = bricks[c][r];
+          if (brick.status === 1) {
+            if (
+              x > brick.x &&
+              x < brick.x + brickWidth &&
+              y > brick.y &&
+              y < brick.y + brickHeight
+            ) {
+              dy = -dy;
+              brick.status = 0;
+              score += 10;
+              document.getElementById("score").textContent = score;
+              if (score === brickRowCount * brickColumnCount * 10) {
+                setTimeout(() => {
+                  alert("🎉 ENHORABUENA! ¡Has ganado! 🎊");
+                  startNewLevel();
+                }, 200);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function startGame() {
+      isGameRunning = true;
+      score = 0;
+      lives = 3;
+      document.getElementById("score").textContent = score;
+      document.getElementById("lives").textContent = lives;
+      x = canvas.width / 2;
+      y = canvas.height - 30;
+      dx = 2;
+      dy = -2;
+      paddleX = (canvas.width - paddleWidth) / 2;
+      initializeBricks();
+      startButton.disabled = true;
+      gameMusic.play();
+      draw();
+    }
+
+    function startNewLevel() {
+      initializeBricks();
+      x = canvas.width / 2;
+      y = canvas.height - 30;
+      dx = 2 + Math.random();
+      dy = -2 - Math.random();
+      paddleX = (canvas.width - paddleWidth) / 2;
+    }
+
+    function draw() {
+      if (!isGameRunning) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBricks();
+      drawBall();
+      drawPaddle();
+      collisionDetection();
+
+      if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+        dx = -dx;
+      }
+      if (y + dy < ballRadius) {
+        dy = -dy;
+      } else if (y + dy > canvas.height - ballRadius) {
+        if (x > paddleX && x < paddleX + paddleWidth) {
+          dy = -dy;
+        } else {
+          lives--;
+          document.getElementById("lives").textContent = lives;
+          if (!lives) {
+            setTimeout(() => {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.font = "32px 'Press Start 2P'";
+              ctx.fillStyle = "red";
+              ctx.textAlign = "center";
+              ctx.fillText("GAME OVER 😵 💀", canvas.width / 2, canvas.height / 2);
+              isGameRunning = false;
+              gameMusic.pause();
+              gameMusic.currentTime = 0;
+              startButton.disabled = false;
+            }, 200);
+            return;
+          } else {
+            x = canvas.width / 2;
+            y = canvas.height - 30;
+            dx = 2;
+            dy = -2;
+            paddleX = (canvas.width - paddleWidth) / 2;
+          }
+        }
+      }
+
+      if (rightPressed && paddleX < canvas.width - paddleWidth) {
+        paddleX += 7;
+      } else if (leftPressed && paddleX > 0) {
+        paddleX -= 7;
+      }
+
+      x += dx;
+      y += dy;
+      requestAnimationFrame(draw);
+    }
+  </script>
+
+  Creado por Alba Navarro
+</body>
+</html>
